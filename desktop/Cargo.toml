@@ -1,0 +1,8 @@
+[package]
+name = "ai-assistant-client-desktop"
+version = "1.0.0"
+edition = "2021"
+
+[[bin]]
+name = "AI-Assistant-Client"
+path = "src/main.rs"

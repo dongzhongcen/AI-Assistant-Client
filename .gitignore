@@ -9,10 +9,14 @@ app/src/main/assets/
 Thumbs.db
 node_modules/
 dist/
+desktop/target/
 out/
 coverage/
 .gradle/
 .idea/
+gradle/
+gradlew
+gradlew.bat
 local.properties
 .env
 .env.*

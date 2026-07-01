@@ -46,6 +46,41 @@ AI-Assistant-Client-debug.apk
 The Android app uses a local WebView shell and a native bridge for streaming chat requests.  
 No extra Gradle download is required; the script uses the local Android SDK tools.
 
+## Windows Desktop EXE
+
+Inspired by Chatbox's desktop-first structure, this project keeps a small host process and a web chat renderer, while making data cleanup explicit.
+
+Build:
+
+```powershell
+.\build-desktop-exe.ps1
+```
+
+Output:
+
+```text
+dist/windows/AI-Assistant-Client.exe
+dist/windows/Clean-AI-Assistant-Client-Data.cmd
+```
+
+Desktop data is kept in one easy-to-clean folder:
+
+```text
+%LOCALAPPDATA%\AI-Assistant-Client
+```
+
+Clean it:
+
+```powershell
+dist/windows/AI-Assistant-Client.exe --clear-data
+```
+
+or run:
+
+```text
+dist/windows/Clean-AI-Assistant-Client-Data.cmd
+```
+
 ## Model Setup
 
 In the app, open `设置 / Settings / Reglages` and fill:
