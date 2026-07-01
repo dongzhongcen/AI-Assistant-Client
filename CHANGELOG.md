@@ -6,6 +6,7 @@
 - Added NSIS/MSI bundle configuration for standalone desktop installation.
 - Kept desktop data under the app-specific data directory for predictable cleanup.
 - Added a local Rust setup installer fallback when the Tauri bundler cannot download NSIS/MSI tooling.
+- Fixed Windows release builds to use the GUI subsystem so no extra console window opens.
 
 ## 1.0.3 - 2026-07-01
 
