@@ -1,20 +1,34 @@
 package com.dzc.aiassistant;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.app.Activity;
+import android.content.ContentValues;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -32,10 +46,12 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        configureEdgeToEdge();
 
         webView = new WebView(this);
-        webView.setBackgroundColor(Color.rgb(246, 247, 249));
+        webView.setBackgroundColor(Color.TRANSPARENT);
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         setContentView(webView);
 
         WebSettings settings = webView.getSettings();
@@ -61,6 +77,29 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient());
         webView.addJavascriptInterface(new AndroidBridge(), "AndroidBridge");
         webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    private void configureEdgeToEdge() {
+        Window window = getWindow();
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        window.getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        );
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            window.setAttributes(params);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        }
     }
 
     @Override
@@ -94,6 +133,90 @@ public class MainActivity extends Activity {
     }
 
     private class AndroidBridge {
+        @JavascriptInterface
+        public void toast(String message) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public String pasteClipboard() {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null || !clipboard.hasPrimaryClip()) {
+                return "";
+            }
+            ClipData data = clipboard.getPrimaryClip();
+            if (data == null || data.getItemCount() == 0) {
+                return "";
+            }
+            CharSequence text = data.getItemAt(0).coerceToText(MainActivity.this);
+            return text == null ? "" : text.toString();
+        }
+
+        @JavascriptInterface
+        public void confirmClear() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("清空会话")
+                            .setMessage("确认清空所有本地会话？")
+                            .setNegativeButton("取消", null)
+                            .setPositiveButton("清空", new android.content.DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(android.content.DialogInterface dialog, int which) {
+                                    webView.evaluateJavascript("window.__clearLocalConversations && window.__clearLocalConversations();", null);
+                                }
+                            })
+                            .show();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void exportConversations(String payload, String filename) {
+            executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        String safeName = sanitizeFilename(filename);
+                        if (android.os.Build.VERSION.SDK_INT >= 29) {
+                            ContentValues values = new ContentValues();
+                            values.put(MediaStore.Downloads.DISPLAY_NAME, safeName);
+                            values.put(MediaStore.Downloads.MIME_TYPE, "application/json");
+                            values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                            if (uri == null) {
+                                throw new Exception("无法创建下载文件");
+                            }
+                            try (OutputStream stream = getContentResolver().openOutputStream(uri)) {
+                                if (stream == null) {
+                                    throw new Exception("无法写入下载文件");
+                                }
+                                stream.write(payload.getBytes(StandardCharsets.UTF_8));
+                            }
+                        } else {
+                            File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                            if (!dir.exists()) {
+                                dir.mkdirs();
+                            }
+                            File output = new File(dir, safeName);
+                            try (FileOutputStream stream = new FileOutputStream(output)) {
+                                stream.write(payload.getBytes(StandardCharsets.UTF_8));
+                            }
+                        }
+                        toast("已导出到 Downloads/" + safeName);
+                    } catch (Exception error) {
+                        toast("导出失败：" + (error.getMessage() == null ? "未知错误" : error.getMessage()));
+                    }
+                }
+            });
+        }
+
         @JavascriptInterface
         public void chatCompletions(String rawRequest) {
             executor.execute(new Runnable() {
@@ -223,5 +346,9 @@ public class MainActivity extends Activity {
 
     private String escapeJs(String value) {
         return value.replace("\\", "\\\\").replace("'", "\\'");
+    }
+
+    private String sanitizeFilename(String value) {
+        return value.replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 }

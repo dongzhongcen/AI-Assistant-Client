@@ -6,7 +6,7 @@ Client IA leger, simple et portable.
 
 ## Version
 
-- App: `1.0.1`
+- App: `1.0.2`
 - Android package: `com.dzc.aiassistant`
 - Build type: debug APK
 - Updated: `2026-07-01`
@@ -59,3 +59,7 @@ In the app, open `设置 / Settings / Reglages` and fill:
 - 会话和设置默认保存在本地浏览器/WebView 存储里。
 - Cache is kept minimal; temporary WebView cache is cleared on app exit.
 - Les donnees importantes restent locales, les fichiers temporaires sont limites.
+
+## Latest Fix
+
+`1.0.2` fixes Android export, clear confirmation, API-key paste, edge-to-edge display, and smoother motion.

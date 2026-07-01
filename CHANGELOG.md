@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2 - 2026-07-01
+
+- Fixed Android export by writing conversation JSON to Downloads through the native bridge.
+- Fixed clear conversation flow with a native Android confirmation dialog.
+- Added clipboard paste support for API keys in WebView.
+- Improved edge-to-edge display to reduce black borders on modern Android screens.
+- Added smoother transform-based UI transitions without adding heavy runtime dependencies.
+
 ## 1.0.1 - 2026-07-01
 
 - Improved Android WebView performance.

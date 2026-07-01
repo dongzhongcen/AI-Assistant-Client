@@ -49,6 +49,7 @@ const els = {
   export: document.querySelector("#exportButton"),
   baseUrl: document.querySelector("#baseUrlInput"),
   apiKey: document.querySelector("#apiKeyInput"),
+  pasteKey: document.querySelector("#pasteKeyButton"),
   model: document.querySelector("#modelInput"),
   temperature: document.querySelector("#temperatureInput"),
   systemPrompt: document.querySelector("#systemPromptInput"),
@@ -448,23 +449,60 @@ document.querySelectorAll("[data-prompt]").forEach((button) => {
   button.addEventListener("click", () => insertPrompt(button.dataset.prompt));
 });
 
-els.clear.addEventListener("click", () => {
-  if (!confirm("确认清空所有本地会话？")) return;
+function clearLocalConversations() {
   const first = createConversation();
   state.conversations = [first];
   state.activeId = first.id;
   saveState();
   render();
+  if (window.AndroidBridge?.toast) {
+    window.AndroidBridge.toast("已清空本地会话");
+  }
+}
+
+window.__clearLocalConversations = clearLocalConversations;
+
+els.clear.addEventListener("click", () => {
+  if (window.AndroidBridge?.confirmClear) {
+    window.AndroidBridge.confirmClear();
+    return;
+  }
+  if (!confirm("确认清空所有本地会话？")) return;
+  clearLocalConversations();
 });
 
 els.export.addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(state.conversations, null, 2)], { type: "application/json" });
+  const filename = `ai-client-conversations-${Date.now()}.json`;
+  const payload = JSON.stringify(state.conversations, null, 2);
+  if (window.AndroidBridge?.exportConversations) {
+    window.AndroidBridge.exportConversations(payload, filename);
+    return;
+  }
+  const blob = new Blob([payload], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `ai-client-conversations-${Date.now()}.json`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+});
+
+els.pasteKey?.addEventListener("click", async () => {
+  try {
+    if (window.AndroidBridge?.pasteClipboard) {
+      const value = window.AndroidBridge.pasteClipboard();
+      if (value) {
+        els.apiKey.value = value.trim();
+        els.apiKey.focus();
+      }
+      return;
+    }
+    const value = await navigator.clipboard.readText();
+    els.apiKey.value = value.trim();
+    els.apiKey.focus();
+  } catch {
+    els.apiKey.focus();
+  }
 });
 
 render();

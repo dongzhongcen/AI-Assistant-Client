@@ -11,5 +11,8 @@ node_modules/
 dist/
 out/
 coverage/
+.gradle/
+.idea/
+local.properties
 .env
 .env.*
