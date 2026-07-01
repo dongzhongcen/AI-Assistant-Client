@@ -78,6 +78,8 @@ let abortController = null;
 let pendingAssistantContent = "";
 let pendingFrame = 0;
 let pendingAttachments = [];
+let pendingSaveTimer = 0;
+let pendingIdleSave = 0;
 let mode = "chat";
 
 function loadState() {
@@ -104,7 +106,15 @@ function loadState() {
   }
 }
 
-function saveState() {
+function saveStateNow() {
+  if (pendingSaveTimer) {
+    clearTimeout(pendingSaveTimer);
+    pendingSaveTimer = 0;
+  }
+  if (pendingIdleSave && window.cancelIdleCallback) {
+    window.cancelIdleCallback(pendingIdleSave);
+  }
+  pendingIdleSave = 0;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(createPersistableState(state)));
   } catch {
@@ -117,6 +127,18 @@ function saveState() {
       activeId: state.activeId,
     }));
   }
+}
+
+function saveState() {
+  if (pendingSaveTimer) clearTimeout(pendingSaveTimer);
+  pendingSaveTimer = setTimeout(() => {
+    pendingSaveTimer = 0;
+    if (window.requestIdleCallback) {
+      pendingIdleSave = window.requestIdleCallback(() => saveStateNow(), { timeout: 1200 });
+    } else {
+      saveStateNow();
+    }
+  }, 250);
 }
 
 function createConversation() {
@@ -458,13 +480,19 @@ async function sendMessage(content, attachments = []) {
   } catch (error) {
     assistantMessage.content = error.name === "AbortError" ? "已停止生成。" : `请求失败：${error.message}`;
     assistantMessage.error = error.name !== "AbortError";
+    assistantMessage.loading = false;
+    updateLastAssistantBubble(assistantMessage.content);
   } finally {
     assistantMessage.loading = false;
     abortController = null;
     conversation.updatedAt = new Date().toISOString();
     saveState();
     setSending(false);
-    render();
+    if (assistantMessage.error) {
+      renderMessages();
+    }
+    renderConversationList();
+    renderShareList();
   }
 }
 
@@ -958,6 +986,9 @@ els.form.addEventListener("submit", (event) => {
   renderAttachmentTray();
   sendMessage(content, attachments);
 });
+
+window.addEventListener("pagehide", saveStateNow);
+window.addEventListener("beforeunload", saveStateNow);
 
 els.attach.addEventListener("click", () => els.imageInput.click());
 els.imageInput.addEventListener("change", async () => {

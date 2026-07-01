@@ -35,9 +35,9 @@ struct ImageResponse {
 }
 
 #[tauri::command]
-fn chat_completions(request: ChatRequest) -> Result<ChatResponse, String> {
+async fn chat_completions(request: ChatRequest) -> Result<ChatResponse, String> {
     let base_url = request.base_url.trim_end_matches('/');
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|error| error.to_string())?;
@@ -54,11 +54,13 @@ fn chat_completions(request: ChatRequest) -> Result<ChatResponse, String> {
         .bearer_auth(request.api_key)
         .json(&payload)
         .send()
+        .await
         .map_err(|error| format!("网络请求失败：{error}"))?;
 
     let status = response.status();
     let body: Value = response
         .json()
+        .await
         .map_err(|error| format!("响应解析失败：{error}"))?;
 
     if !status.is_success() {
@@ -82,9 +84,9 @@ fn chat_completions(request: ChatRequest) -> Result<ChatResponse, String> {
 }
 
 #[tauri::command]
-fn image_generations(request: ImageRequest) -> Result<ImageResponse, String> {
+async fn image_generations(request: ImageRequest) -> Result<ImageResponse, String> {
     let base_url = request.base_url.trim_end_matches('/');
-    let client = reqwest::blocking::Client::builder()
+    let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(180))
         .build()
         .map_err(|error| error.to_string())?;
@@ -101,11 +103,13 @@ fn image_generations(request: ImageRequest) -> Result<ImageResponse, String> {
         .bearer_auth(request.api_key)
         .json(&payload)
         .send()
+        .await
         .map_err(|error| format!("Image request failed: {error}"))?;
 
     let status = response.status();
     let body: Value = response
         .json()
+        .await
         .map_err(|error| format!("Image response parse failed: {error}"))?;
 
     if !status.is_success() {
