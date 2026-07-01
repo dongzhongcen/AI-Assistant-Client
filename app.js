@@ -5,6 +5,9 @@ const defaultSettings = {
   baseUrl: "https://api.openai.com/v1",
   apiKey: "",
   model: "gpt-4.1-mini",
+  imageBaseUrl: "",
+  imageApiKey: "",
+  imageModel: "",
   temperature: 0.7,
   systemPrompt: "你是一个可靠、清晰、耐心的中文 AI 助手。",
   imageSize: "1024x1024",
@@ -61,6 +64,9 @@ const els = {
   export: document.querySelector("#exportButton"),
   baseUrl: document.querySelector("#baseUrlInput"),
   apiKey: document.querySelector("#apiKeyInput"),
+  imageBaseUrl: document.querySelector("#imageBaseUrlInput"),
+  imageApiKey: document.querySelector("#imageApiKeyInput"),
+  imageModel: document.querySelector("#imageModelInput"),
   pasteKey: document.querySelector("#pasteKeyButton"),
   model: document.querySelector("#modelInput"),
   temperature: document.querySelector("#temperatureInput"),
@@ -149,6 +155,9 @@ function renderSettings() {
   els.baseUrl.value = state.settings.baseUrl;
   els.apiKey.value = state.settings.apiKey;
   els.model.value = state.settings.model;
+  els.imageBaseUrl.value = state.settings.imageBaseUrl || "";
+  els.imageApiKey.value = state.settings.imageApiKey || "";
+  els.imageModel.value = state.settings.imageModel || "";
   els.temperature.value = state.settings.temperature;
   els.systemPrompt.value = state.settings.systemPrompt;
   els.imageSize.value = state.settings.imageSize || defaultSettings.imageSize;
@@ -476,11 +485,11 @@ async function generateImage(prompt) {
   saveState();
   render();
 
-  if (!state.settings.apiKey) {
+  if (!imageProviderSettings().apiKey) {
     conversation.messages.push({
       id: randomId(),
       role: "assistant",
-      content: "请先在设置里填写 API Key。生图需要接口提供 /images/generations。",
+      content: "请先在设置里填写 Image API Key，或填写通用 API Key。生图需要接口提供 /images/generations。",
       error: true,
     });
     saveState();
@@ -515,7 +524,7 @@ async function generateImage(prompt) {
       filename: `ai-image-${Date.now()}.png`,
     };
   } catch (error) {
-    assistantMessage.content = `生图失败：${error.message}`;
+    assistantMessage.content = `生图失败：${formatError(error)}`;
     assistantMessage.error = true;
   } finally {
     assistantMessage.loading = false;
@@ -527,12 +536,13 @@ async function generateImage(prompt) {
 }
 
 async function requestImageGeneration(prompt, size) {
+  const imageSettings = imageProviderSettings();
   if (window.__TAURI_INTERNALS__?.invoke) {
     const result = await window.__TAURI_INTERNALS__.invoke("image_generations", {
       request: {
-        baseUrl: state.settings.baseUrl,
-        apiKey: state.settings.apiKey,
-        model: state.settings.model,
+        baseUrl: imageSettings.baseUrl,
+        apiKey: imageSettings.apiKey,
+        model: imageSettings.model,
         prompt,
         size,
       },
@@ -540,14 +550,14 @@ async function requestImageGeneration(prompt, size) {
     return result;
   }
 
-  const response = await fetch(`${state.settings.baseUrl.replace(/\/$/, "")}/images/generations`, {
+  const response = await fetch(`${imageSettings.baseUrl.replace(/\/$/, "")}/images/generations`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${state.settings.apiKey}`,
+      Authorization: `Bearer ${imageSettings.apiKey}`,
     },
     body: JSON.stringify({
-      model: state.settings.model,
+      model: imageSettings.model,
       prompt,
       size,
       n: 1,
@@ -560,6 +570,14 @@ async function requestImageGeneration(prompt, size) {
   }
 
   return body;
+}
+
+function imageProviderSettings() {
+  return {
+    baseUrl: (state.settings.imageBaseUrl || state.settings.baseUrl || defaultSettings.baseUrl).trim(),
+    apiKey: (state.settings.imageApiKey || state.settings.apiKey || "").trim(),
+    model: (state.settings.imageModel || state.settings.model || defaultSettings.model).trim(),
+  };
 }
 
 function normalizeImageGenerationResult(result) {
@@ -614,6 +632,17 @@ function findImageString(value) {
     }
   }
   return "";
+}
+
+function formatError(error) {
+  if (!error) return "未知错误";
+  if (typeof error === "string") return error;
+  if (error.message) return error.message;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
 }
 
 function createUserMessage(text, attachments) {
@@ -972,6 +1001,9 @@ els.settingsForm.addEventListener("submit", (event) => {
     baseUrl: els.baseUrl.value.trim() || defaultSettings.baseUrl,
     apiKey: els.apiKey.value.trim(),
     model: els.model.value.trim() || defaultSettings.model,
+    imageBaseUrl: els.imageBaseUrl.value.trim(),
+    imageApiKey: els.imageApiKey.value.trim(),
+    imageModel: els.imageModel.value.trim(),
     temperature: Number(els.temperature.value) || defaultSettings.temperature,
     systemPrompt: els.systemPrompt.value.trim() || defaultSettings.systemPrompt,
     imageSize: els.imageSize.value || defaultSettings.imageSize,

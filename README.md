@@ -53,6 +53,7 @@ Open `设置 / Settings / Reglages` and fill:
 - `Base URL`: for example `https://api.openai.com/v1`
 - `API Key`: your provider key
 - `Model`: use a vision-capable model for image recognition, or an image model when using 生图 mode
+- `Image Base URL` / `Image API Key` / `Image Model`: optional separate provider settings for image generation
 
 ## Android
 
