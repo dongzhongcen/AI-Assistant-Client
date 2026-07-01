@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4 - 2026-07-01
+
+- Added Tauri desktop app scaffold for installable Windows UI.
+- Added NSIS/MSI bundle configuration for standalone desktop installation.
+- Kept desktop data under the app-specific data directory for predictable cleanup.
+- Added a local Rust setup installer fallback when the Tauri bundler cannot download NSIS/MSI tooling.
+
 ## 1.0.3 - 2026-07-01
 
 - Added Windows desktop EXE launcher built with Rust.

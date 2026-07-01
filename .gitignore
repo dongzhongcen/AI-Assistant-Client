@@ -8,8 +8,14 @@ app/src/main/assets/
 .DS_Store
 Thumbs.db
 node_modules/
-dist/
+src-tauri/target/
+src-tauri/gen/
+!dist/
+dist/*
+!dist/windows/
+!dist/windows/Clean-AI-Assistant-Client-Data.cmd
 desktop/target/
+installer/target/
 out/
 coverage/
 .gradle/

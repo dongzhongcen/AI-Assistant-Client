@@ -1,0 +1,17 @@
+{
+  "name": "ai-assistant-client",
+  "version": "1.0.4",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "desktop:build": "tauri build",
+    "desktop:dev": "tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.0"
+  }
+}

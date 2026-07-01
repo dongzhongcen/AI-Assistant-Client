@@ -50,6 +50,32 @@ No extra Gradle download is required; the script uses the local Android SDK tool
 
 Inspired by Chatbox's desktop-first structure, this project keeps a small host process and a web chat renderer, while making data cleanup explicit.
 
+For a true installable desktop app, use the Tauri build:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-tauri-desktop.ps1
+```
+
+Installer outputs are generated under:
+
+```text
+src-tauri/target/release/bundle
+```
+
+If the Tauri NSIS/MSI bundler cannot download its packaging tools, build the local installer:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-windows-installer.ps1
+```
+
+Output:
+
+```text
+dist/installer/AI-Assistant-Client-Setup.exe
+```
+
+The installer creates a Start Menu shortcut, a desktop shortcut, and an uninstall entry for the current Windows user.
+
 Build:
 
 ```powershell

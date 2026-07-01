@@ -1,0 +1,8 @@
+[package]
+name = "ai-assistant-client-installer"
+version = "1.0.4"
+edition = "2021"
+
+[[bin]]
+name = "AI-Assistant-Client-Setup"
+path = "src/main.rs"
