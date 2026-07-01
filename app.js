@@ -49,6 +49,9 @@ const els = {
   settingsButton: document.querySelector("#settingsButton"),
   settingsModal: document.querySelector("#settingsModal"),
   settingsForm: document.querySelector("#settingsForm"),
+  shareButton: document.querySelector("#shareButton"),
+  shareModal: document.querySelector("#shareModal"),
+  shareList: document.querySelector("#shareList"),
   promptButton: document.querySelector("#promptButton"),
   promptModal: document.querySelector("#promptModal"),
   promptList: document.querySelector("#promptList"),
@@ -137,6 +140,7 @@ function render() {
   renderConversationList();
   renderMessages();
   renderPromptList();
+  renderShareList();
   renderAttachmentTray();
   els.notice.classList.toggle("show", !state.settings.apiKey);
 }
@@ -249,12 +253,15 @@ function renderMessageBody(message) {
 }
 
 function renderGeneratedImage(image) {
+  if (!image?.url || image.url === "undefined") {
+    return '<div class="inline-error">图片地址缺失：接口没有返回可显示的图片 URL 或 base64。</div>';
+  }
   return `
     <div class="generated-image">
       <img src="${image.url}" alt="${escapeHtml(image.prompt)}" loading="lazy" />
       <div class="generated-image-actions">
         <span>${escapeHtml(image.size || "image")}</span>
-        <button type="button" data-save-image="${escapeHtml(image.url)}" data-filename="${escapeHtml(image.filename)}">保存图片</button>
+        <button type="button" data-save-image="${escapeHtml(image.url)}" data-filename="${escapeHtml(image.filename || `ai-image-${Date.now()}.png`)}">保存图片</button>
       </div>
     </div>
   `;
@@ -306,6 +313,70 @@ function renderPromptList() {
     });
     els.promptList.appendChild(button);
   });
+}
+
+function renderShareList() {
+  if (!els.shareList) return;
+  const current = activeConversation();
+  els.shareList.innerHTML = "";
+
+  const newButton = document.createElement("button");
+  newButton.type = "button";
+  newButton.innerHTML = "<strong>转接到新对话</strong><span>复制当前上下文，然后在新对话里继续提问</span>";
+  newButton.addEventListener("click", () => shareCurrentConversationToNew());
+  els.shareList.appendChild(newButton);
+
+  state.conversations
+    .filter((conversation) => conversation.id !== current.id)
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .forEach((conversation) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.innerHTML = `<strong>${escapeHtml(conversation.title)}</strong><span>${conversation.messages.length || 0} 条消息 · ${formatTime(conversation.updatedAt)}</span>`;
+      button.addEventListener("click", () => shareCurrentConversationTo(conversation.id));
+      els.shareList.appendChild(button);
+    });
+}
+
+function shareCurrentConversationToNew() {
+  const target = createConversation();
+  target.title = `转接：${activeConversation().title}`.slice(0, 32);
+  state.conversations.push(target);
+  shareCurrentConversationTo(target.id);
+}
+
+function shareCurrentConversationTo(targetId) {
+  const source = activeConversation();
+  const target = state.conversations.find((conversation) => conversation.id === targetId);
+  if (!source || !target || !source.messages.length) return;
+
+  const sharedText = buildSharedConversationText(source);
+  target.messages.push({
+    id: randomId(),
+    role: "user",
+    content: sharedText,
+    longTextPreview: sharedText.length > LONG_TEXT_THRESHOLD ? createLongTextPreview(sharedText) : null,
+  });
+  target.updatedAt = new Date().toISOString();
+  state.activeId = target.id;
+  saveState();
+  els.shareModal?.close();
+  document.body.classList.remove("sidebar-open");
+  render();
+  els.input.focus();
+}
+
+function buildSharedConversationText(conversation) {
+  const lines = conversation.messages
+    .filter((message) => !message.loading)
+    .map((message) => {
+      const name = message.role === "assistant" ? "AI" : "用户";
+      const text = getDisplayText(message.content) || (message.imageResult ? `[生成图片] ${message.imageResult.prompt}` : "");
+      return `${name}: ${text}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  return `请基于下面这段已转接的对话上下文继续回答。你可以先理解上下文，再等待我的下一步问题。\n\n${lines}`;
 }
 
 function renderAttachmentTray() {
@@ -431,7 +502,10 @@ async function generateImage(prompt) {
     const size = els.imageSize.value || defaultSettings.imageSize;
     state.settings.imageSize = size;
     saveState();
-    const result = await requestImageGeneration(text, size);
+    const result = normalizeImageGenerationResult(await requestImageGeneration(text, size));
+    if (!result.url) {
+      throw new Error("接口返回了结果，但没有可显示的图片地址");
+    }
     assistantMessage.loading = false;
     assistantMessage.content = `已生成图片：${text}`;
     assistantMessage.imageResult = {
@@ -454,7 +528,7 @@ async function generateImage(prompt) {
 
 async function requestImageGeneration(prompt, size) {
   if (window.__TAURI_INTERNALS__?.invoke) {
-    return window.__TAURI_INTERNALS__.invoke("image_generations", {
+    const result = await window.__TAURI_INTERNALS__.invoke("image_generations", {
       request: {
         baseUrl: state.settings.baseUrl,
         apiKey: state.settings.apiKey,
@@ -463,6 +537,7 @@ async function requestImageGeneration(prompt, size) {
         size,
       },
     });
+    return result;
   }
 
   const response = await fetch(`${state.settings.baseUrl.replace(/\/$/, "")}/images/generations`, {
@@ -484,10 +559,61 @@ async function requestImageGeneration(prompt, size) {
     throw new Error(JSON.stringify(body));
   }
 
-  const item = body.data?.[0];
-  if (item?.b64_json) return { url: `data:image/png;base64,${item.b64_json}` };
-  if (item?.url) return { url: item.url };
-  throw new Error("接口没有返回图片数据");
+  return body;
+}
+
+function normalizeImageGenerationResult(result) {
+  if (!result) return { url: "" };
+  if (typeof result === "string") return { url: result };
+  if (result.url) return { url: result.url };
+  if (result.b64_json) return { url: `data:image/png;base64,${result.b64_json}` };
+
+  const first = Array.isArray(result.data) ? result.data[0] : null;
+  if (first?.url) return { url: first.url };
+  if (first?.b64_json) return { url: `data:image/png;base64,${first.b64_json}` };
+  if (first?.image_url?.url) return { url: first.image_url.url };
+
+  const output = Array.isArray(result.output) ? result.output : [];
+  for (const item of output) {
+    const content = Array.isArray(item?.content) ? item.content : [];
+    for (const part of content) {
+      if (part?.image_url?.url) return { url: part.image_url.url };
+      if (part?.b64_json) return { url: `data:image/png;base64,${part.b64_json}` };
+    }
+  }
+
+  const found = findImageString(result);
+  return { url: found || "" };
+}
+
+function findImageString(value) {
+  if (!value) return "";
+  if (typeof value === "string") {
+    if (value.startsWith("data:image/") || value.startsWith("http://") || value.startsWith("https://")) {
+      return value;
+    }
+    return "";
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findImageString(item);
+      if (found) return found;
+    }
+    return "";
+  }
+  if (typeof value === "object") {
+    for (const key of ["url", "image", "image_url", "b64_json"]) {
+      const item = value[key];
+      if (key === "b64_json" && typeof item === "string") return `data:image/png;base64,${item}`;
+      const found = findImageString(item);
+      if (found) return found;
+    }
+    for (const item of Object.values(value)) {
+      const found = findImageString(item);
+      if (found) return found;
+    }
+  }
+  return "";
 }
 
 function createUserMessage(text, attachments) {
@@ -833,6 +959,10 @@ els.newChat.addEventListener("click", () => {
 
 els.search.addEventListener("input", renderConversationList);
 els.settingsButton.addEventListener("click", () => els.settingsModal.showModal());
+els.shareButton?.addEventListener("click", () => {
+  renderShareList();
+  els.shareModal.showModal();
+});
 els.promptButton.addEventListener("click", () => els.promptModal.showModal());
 els.mobileMenu.addEventListener("click", () => document.body.classList.toggle("sidebar-open"));
 

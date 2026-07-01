@@ -13,7 +13,7 @@ Client IA simple, local, installable sous Windows.
 
 ## Highlights
 
-- 中文：独立 Windows 窗口、多会话、本地保存、导出/清空、图片识别、生图、长文本 TXT preview。
+- 中文：独立 Windows 窗口、多会话、本地保存、导出/清空、图片识别、生图、对话转接、长文本 TXT preview。
 - English: installable Tauri desktop app, OpenAI-compatible API, vision/image generation, clean uninstall path.
 - Francais: interface simple, donnees locales, installation et suppression faciles.
 

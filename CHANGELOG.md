@@ -5,6 +5,8 @@
 - Added multi-image upload for vision-capable OpenAI-compatible models.
 - Added image generation mode for providers that support `/images/generations`.
 - Added generated-image saving with a user-selected save location when supported by the WebView.
+- Added conversation handoff so the current chat can be copied into another chat and continued there.
+- Moved per-message delete controls out of the message layout so they no longer block chat content.
 - Added image thumbnails in chat while avoiding permanent image data in local storage.
 - Added long-message TXT preview for very large pasted text.
 - Added per-message delete buttons for removing a single chat record.

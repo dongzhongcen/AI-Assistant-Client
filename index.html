@@ -53,6 +53,10 @@
             <h1 id="chatTitle">新的对话</h1>
           </div>
           <div class="header-actions">
+            <button class="ghost-button" id="shareButton">
+              <svg viewBox="0 0 24 24"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M16 6l-4-4-4 4" /><path d="M12 2v14" /></svg>
+              转接
+            </button>
             <button class="ghost-button" id="promptButton">提示词</button>
             <button class="primary-button" id="settingsButton">
               <svg viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" /><path d="M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2 3.5-.2-.1a1.8 1.8 0 0 0-2.1.2 1.8 1.8 0 0 0-.6 1.9V23h-4v-.3a1.8 1.8 0 0 0-.6-1.9 1.8 1.8 0 0 0-2.1-.2l-.2.1-2-3.5.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.6-1.2H3v-4h.3a1.8 1.8 0 0 0 1.6-1.2 1.8 1.8 0 0 0-.4-2l-.1-.1 2-3.5.2.1a1.8 1.8 0 0 0 2.1-.2A1.8 1.8 0 0 0 9.3 1h4a1.8 1.8 0 0 0 .6 1.9 1.8 1.8 0 0 0 2.1.2l.2-.1 2 3.5-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.6 1.2h.3v4h-.3a1.8 1.8 0 0 0-1.9 1.2Z" /></svg>
@@ -156,6 +160,21 @@
           </button>
         </header>
         <div class="prompt-list" id="promptList"></div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="shareModal">
+      <form method="dialog" class="modal-card prompt-card">
+        <header>
+          <div>
+            <span class="eyebrow">Continue Elsewhere</span>
+            <h2>转接当前对话</h2>
+          </div>
+          <button class="icon-only" value="cancel" aria-label="关闭">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="share-list" id="shareList"></div>
       </form>
     </dialog>
 

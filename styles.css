@@ -322,8 +322,9 @@ button:active {
 }
 
 .message {
+  position: relative;
   display: grid;
-  grid-template-columns: 34px var(--bubble-width) 34px;
+  grid-template-columns: 34px var(--bubble-width);
   gap: 12px;
   margin: 0 auto 22px;
   max-width: min(980px, 100%);
@@ -331,7 +332,7 @@ button:active {
 }
 
 .message.user {
-  grid-template-columns: 34px var(--bubble-width) 34px;
+  grid-template-columns: var(--bubble-width) 34px;
   justify-content: end;
 }
 
@@ -348,20 +349,23 @@ button:active {
 }
 
 .message.user .avatar {
-  grid-column: 3;
+  grid-column: 2;
   grid-row: 1;
   background: #dcecff;
   color: var(--accent);
 }
 
 .message.user .bubble {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 1;
 }
 
 .message-delete {
-  width: 34px;
-  height: 34px;
+  position: absolute;
+  top: 2px;
+  right: max(0px, calc((100% - min(980px, 100%)) / 2));
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
   align-self: start;
@@ -370,8 +374,12 @@ button:active {
   background: rgba(255, 255, 255, 0.76);
   color: var(--muted);
   opacity: 0;
-  transform: translate3d(0, 4px, 0);
+  transform: translate3d(6px, 0, 0);
   transition: opacity 160ms ease, transform 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.message.user .message-delete {
+  right: 46px;
 }
 
 .message:hover .message-delete,
@@ -748,6 +756,14 @@ input:focus {
   font-weight: 700;
 }
 
+.inline-error {
+  padding: 10px 12px;
+  border: 1px solid #ffd1cc;
+  border-radius: 10px;
+  color: var(--danger);
+  background: #fff3f1;
+}
+
 .modal {
   width: min(calc(100vw - 24px), 640px);
   max-height: min(88dvh, 760px);
@@ -834,7 +850,8 @@ input {
   gap: 10px;
 }
 
-.prompt-list button {
+.prompt-list button,
+.share-list button {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 13px;
@@ -842,12 +859,19 @@ input {
   text-align: left;
 }
 
-.prompt-list strong {
+.share-list {
+  display: grid;
+  gap: 10px;
+}
+
+.prompt-list strong,
+.share-list strong {
   display: block;
   margin-bottom: 4px;
 }
 
-.prompt-list span {
+.prompt-list span,
+.share-list span {
   color: var(--muted);
   font-size: 13px;
 }
@@ -896,15 +920,25 @@ input {
 
   .message,
   .message.user {
-    grid-template-columns: 30px minmax(0, 1fr) 30px;
+    grid-template-columns: 30px minmax(0, 1fr);
     gap: 9px;
   }
 
+  .message.user {
+    grid-template-columns: minmax(0, 1fr) 30px;
+  }
+
   .message-delete {
-    width: 30px;
-    height: 30px;
+    top: -8px;
+    right: 0;
+    width: 28px;
+    height: 28px;
     opacity: 1;
     transform: none;
+  }
+
+  .message.user .message-delete {
+    right: 36px;
   }
 
   .settings-grid {
@@ -927,7 +961,14 @@ input {
   }
 
   .header-actions .ghost-button {
-    display: none;
+    min-width: 38px;
+    padding-inline: 9px;
+    font-size: 0;
+  }
+
+  .header-actions .ghost-button svg {
+    width: 18px;
+    height: 18px;
   }
 
   .primary-button {
