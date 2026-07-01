@@ -13,6 +13,7 @@ src-tauri/gen/
 !dist/
 dist/*
 !dist/windows/
+dist/windows/*
 !dist/windows/Clean-AI-Assistant-Client-Data.cmd
 desktop/target/
 installer/target/
