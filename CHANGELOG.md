@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5 - 2026-07-01
+
+- Fixed desktop chat requests by routing model calls through Tauri native Rust commands.
+- Avoided WebView CORS failures that caused `Failed to fetch` after filling API settings.
+
 ## 1.0.4 - 2026-07-01
 
 - Added Tauri desktop app scaffold for installable Windows UI.

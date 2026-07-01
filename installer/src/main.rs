@@ -7,7 +7,7 @@ use std::process::Command;
 const APP_EXE: &[u8] = include_bytes!("../../src-tauri/target/release/ai_assistant_client.exe");
 const APP_NAME: &str = "AI Assistant Client";
 const APP_EXE_NAME: &str = "AI-Assistant-Client.exe";
-const VERSION: &str = "1.0.4";
+const VERSION: &str = "1.0.5";
 
 fn main() {
     let args: Vec<String> = env::args().collect();

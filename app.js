@@ -237,6 +237,11 @@ async function streamCompletion(conversation, assistantMessage, signal) {
     return;
   }
 
+  if (window.__TAURI_INTERNALS__?.invoke) {
+    await streamCompletionOnTauri(conversation, assistantMessage);
+    return;
+  }
+
   const useLocalProxy = location.protocol.startsWith("http") && ["localhost", "127.0.0.1"].includes(location.hostname);
   const url = useLocalProxy
     ? "/api/chat/completions"
@@ -298,6 +303,28 @@ async function streamCompletion(conversation, assistantMessage, signal) {
       }
     }
   }
+}
+
+async function streamCompletionOnTauri(conversation, assistantMessage) {
+  const messages = [
+    { role: "system", content: state.settings.systemPrompt || defaultSettings.systemPrompt },
+    ...conversation.messages
+      .filter((message) => !message.loading && !message.error)
+      .map(({ role, content }) => ({ role, content })),
+  ];
+
+  assistantMessage.loading = false;
+  const response = await window.__TAURI_INTERNALS__.invoke("chat_completions", {
+    request: {
+      baseUrl: state.settings.baseUrl,
+      apiKey: state.settings.apiKey,
+      model: state.settings.model,
+      temperature: Number(state.settings.temperature) || 0.7,
+      messages,
+    },
+  });
+  assistantMessage.content = response.content;
+  updateLastAssistantBubble(assistantMessage.content);
 }
 
 function streamCompletionOnAndroid(conversation, assistantMessage) {
