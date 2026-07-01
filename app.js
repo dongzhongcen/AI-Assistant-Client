@@ -71,6 +71,9 @@ function loadState() {
     const conversations = Array.isArray(saved.conversations) && saved.conversations.length
       ? saved.conversations
       : [createConversation()];
+    conversations.forEach((conversation) => {
+      conversation.messages = (conversation.messages || []).map(ensureMessageId);
+    });
     return {
       settings: { ...defaultSettings, ...(saved.settings || {}) },
       conversations,
@@ -109,6 +112,13 @@ function createConversation() {
     createdAt: now,
     updatedAt: now,
     messages: [],
+  };
+}
+
+function ensureMessageId(message) {
+  return {
+    id: message.id || randomId(),
+    ...message,
   };
 }
 
@@ -171,6 +181,7 @@ function renderMessages() {
   }
 
   conversation.messages.forEach((message) => {
+    if (!message.id) message.id = randomId();
     els.messages.appendChild(createMessageNode(message));
   });
   els.messages.scrollTop = els.messages.scrollHeight;
@@ -192,8 +203,24 @@ function createMessageNode(message) {
     bubble.innerHTML = renderMessageBody(message);
   }
 
-  node.append(avatarNode, bubble);
+  const action = document.createElement("button");
+  action.className = "message-delete";
+  action.type = "button";
+  action.title = "删除这条记录";
+  action.setAttribute("aria-label", "删除这条记录");
+  action.innerHTML = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3" /></svg>';
+  action.addEventListener("click", () => deleteMessage(message.id));
+
+  node.append(avatarNode, bubble, action);
   return node;
+}
+
+function deleteMessage(messageId) {
+  const conversation = activeConversation();
+  conversation.messages = conversation.messages.filter((message) => message.id !== messageId);
+  conversation.updatedAt = new Date().toISOString();
+  saveState();
+  render();
 }
 
 function renderMessageBody(message) {
@@ -303,6 +330,7 @@ async function sendMessage(content, attachments = []) {
 
   if (!state.settings.apiKey) {
     conversation.messages.push({
+      id: randomId(),
       role: "assistant",
       content: "请先在设置里填写 API Key。你的消息已经保存在本地。",
       error: true,
@@ -312,7 +340,7 @@ async function sendMessage(content, attachments = []) {
     return;
   }
 
-  const assistantMessage = { role: "assistant", content: "", loading: true };
+  const assistantMessage = { id: randomId(), role: "assistant", content: "", loading: true };
   conversation.messages.push(assistantMessage);
   render();
   setSending(true);
@@ -345,6 +373,7 @@ function createUserMessage(text, attachments) {
     : text;
 
   return {
+    id: randomId(),
     role: "user",
     content,
     attachments,

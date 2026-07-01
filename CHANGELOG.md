@@ -5,7 +5,8 @@
 - Added multi-image upload for vision-capable OpenAI-compatible models.
 - Added image thumbnails in chat while avoiding permanent image data in local storage.
 - Added long-message TXT preview for very large pasted text.
-- Reworked the Windows setup into an interactive GUI confirmation flow.
+- Added per-message delete buttons for removing a single chat record.
+- Reworked the Windows setup into an interactive GUI panel with install, launch, uninstall, and clean uninstall actions.
 - Removed CMD-based uninstall helper generation so shortcuts never point back to setup.
 
 ## 1.0.5 - 2026-07-01

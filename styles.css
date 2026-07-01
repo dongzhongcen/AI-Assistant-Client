@@ -323,7 +323,7 @@ button:active {
 
 .message {
   display: grid;
-  grid-template-columns: 34px var(--bubble-width);
+  grid-template-columns: 34px var(--bubble-width) 34px;
   gap: 12px;
   margin: 0 auto 22px;
   max-width: min(980px, 100%);
@@ -331,7 +331,7 @@ button:active {
 }
 
 .message.user {
-  grid-template-columns: var(--bubble-width) 34px;
+  grid-template-columns: 34px var(--bubble-width) 34px;
   justify-content: end;
 }
 
@@ -348,10 +348,46 @@ button:active {
 }
 
 .message.user .avatar {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
   background: #dcecff;
   color: var(--accent);
+}
+
+.message.user .bubble {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.message-delete {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  align-self: start;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--muted);
+  opacity: 0;
+  transform: translate3d(0, 4px, 0);
+  transition: opacity 160ms ease, transform 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.message:hover .message-delete,
+.message:focus-within .message-delete {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.message-delete:hover {
+  color: var(--danger);
+  border-color: #ffd1cc;
+}
+
+.message-delete svg {
+  width: 17px;
+  height: 17px;
 }
 
 .bubble {
@@ -778,12 +814,15 @@ input {
 
   .message,
   .message.user {
-    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-columns: 30px minmax(0, 1fr) 30px;
     gap: 9px;
   }
 
-  .message.user {
-    grid-template-columns: minmax(0, 1fr) 30px;
+  .message-delete {
+    width: 30px;
+    height: 30px;
+    opacity: 1;
+    transform: none;
   }
 
   .settings-grid {
