@@ -1,0 +1,14 @@
+build/
+*.apk
+*.apk.idsig
+*.keystore
+*.jks
+*.log
+.DS_Store
+Thumbs.db
+node_modules/
+dist/
+out/
+coverage/
+.env
+.env.*
