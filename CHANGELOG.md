@@ -3,11 +3,14 @@
 ## 1.0.6 - 2026-07-01
 
 - Added multi-image upload for vision-capable OpenAI-compatible models.
+- Added image generation mode for providers that support `/images/generations`.
+- Added generated-image saving with a user-selected save location when supported by the WebView.
 - Added image thumbnails in chat while avoiding permanent image data in local storage.
 - Added long-message TXT preview for very large pasted text.
 - Added per-message delete buttons for removing a single chat record.
 - Reworked the Windows setup into an interactive GUI panel with install, launch, uninstall, and clean uninstall actions.
 - Added an editable install path field to the Windows setup panel.
+- Clean uninstall now removes the Tauri/WebView `com.dzc.aiassistant` data folders where localStorage chat data is stored.
 - Removed CMD-based uninstall helper generation so shortcuts never point back to setup.
 
 ## 1.0.5 - 2026-07-01

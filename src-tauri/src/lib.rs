@@ -18,6 +18,22 @@ struct ChatResponse {
     content: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct ImageRequest {
+    #[serde(rename = "baseUrl")]
+    base_url: String,
+    #[serde(rename = "apiKey")]
+    api_key: String,
+    model: String,
+    prompt: String,
+    size: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ImageResponse {
+    url: String,
+}
+
 #[tauri::command]
 fn chat_completions(request: ChatRequest) -> Result<ChatResponse, String> {
     let base_url = request.base_url.trim_end_matches('/');
@@ -65,6 +81,57 @@ fn chat_completions(request: ChatRequest) -> Result<ChatResponse, String> {
     }
 }
 
+#[tauri::command]
+fn image_generations(request: ImageRequest) -> Result<ImageResponse, String> {
+    let base_url = request.base_url.trim_end_matches('/');
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(180))
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    let payload = serde_json::json!({
+        "model": request.model,
+        "prompt": request.prompt,
+        "size": request.size,
+        "n": 1,
+    });
+
+    let response = client
+        .post(format!("{base_url}/images/generations"))
+        .bearer_auth(request.api_key)
+        .json(&payload)
+        .send()
+        .map_err(|error| format!("Image request failed: {error}"))?;
+
+    let status = response.status();
+    let body: Value = response
+        .json()
+        .map_err(|error| format!("Image response parse failed: {error}"))?;
+
+    if !status.is_success() {
+        return Err(body.to_string());
+    }
+
+    let item = body
+        .get("data")
+        .and_then(|data| data.get(0))
+        .ok_or_else(|| format!("Image API returned no data: {body}"))?;
+
+    if let Some(b64) = item.get("b64_json").and_then(Value::as_str) {
+        return Ok(ImageResponse {
+            url: format!("data:image/png;base64,{b64}"),
+        });
+    }
+
+    if let Some(url) = item.get("url").and_then(Value::as_str) {
+        return Ok(ImageResponse {
+            url: url.to_string(),
+        });
+    }
+
+    Err(format!("Image API returned no image url: {body}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -72,7 +139,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .invoke_handler(tauri::generate_handler![chat_completions])
+        .invoke_handler(tauri::generate_handler![chat_completions, image_generations])
         .setup(|app| {
             if let Some(dir) = app.path().app_data_dir().ok() {
                 let _ = std::fs::create_dir_all(dir);

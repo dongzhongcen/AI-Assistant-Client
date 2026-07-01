@@ -7,6 +7,7 @@ const defaultSettings = {
   model: "gpt-4.1-mini",
   temperature: 0.7,
   systemPrompt: "你是一个可靠、清晰、耐心的中文 AI 助手。",
+  imageSize: "1024x1024",
 };
 
 const promptTemplates = [
@@ -38,6 +39,9 @@ const els = {
   notice: document.querySelector("#notice"),
   hint: document.querySelector("#composerHint"),
   imageInput: document.querySelector("#imageInput"),
+  imageSize: document.querySelector("#imageSizeInput"),
+  chatMode: document.querySelector("#chatModeButton"),
+  imageMode: document.querySelector("#imageModeButton"),
   attach: document.querySelector("#attachButton"),
   attachmentTray: document.querySelector("#attachmentTray"),
   newChat: document.querySelector("#newChatButton"),
@@ -48,6 +52,7 @@ const els = {
   promptButton: document.querySelector("#promptButton"),
   promptModal: document.querySelector("#promptModal"),
   promptList: document.querySelector("#promptList"),
+  quickPrompts: document.querySelector("#quickPrompts"),
   mobileMenu: document.querySelector("#mobileMenuButton"),
   clear: document.querySelector("#clearButton"),
   export: document.querySelector("#exportButton"),
@@ -64,6 +69,7 @@ let abortController = null;
 let pendingAssistantContent = "";
 let pendingFrame = 0;
 let pendingAttachments = [];
+let mode = "chat";
 
 function loadState() {
   try {
@@ -141,6 +147,8 @@ function renderSettings() {
   els.model.value = state.settings.model;
   els.temperature.value = state.settings.temperature;
   els.systemPrompt.value = state.settings.systemPrompt;
+  els.imageSize.value = state.settings.imageSize || defaultSettings.imageSize;
+  updateModeUi();
 }
 
 function renderConversationList() {
@@ -227,6 +235,8 @@ function renderMessageBody(message) {
   const parts = [];
   if (message.longTextPreview) {
     parts.push(renderTextPreview(message.longTextPreview, getDisplayText(message.content)));
+  } else if (message.imageResult) {
+    parts.push(renderGeneratedImage(message.imageResult));
   } else {
     parts.push(renderMarkdownLite(getDisplayText(message.content)));
   }
@@ -236,6 +246,18 @@ function renderMessageBody(message) {
   }
 
   return parts.filter(Boolean).join("");
+}
+
+function renderGeneratedImage(image) {
+  return `
+    <div class="generated-image">
+      <img src="${image.url}" alt="${escapeHtml(image.prompt)}" loading="lazy" />
+      <div class="generated-image-actions">
+        <span>${escapeHtml(image.size || "image")}</span>
+        <button type="button" data-save-image="${escapeHtml(image.url)}" data-filename="${escapeHtml(image.filename)}">保存图片</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderTextPreview(preview, text = "") {
@@ -314,6 +336,11 @@ function insertPrompt(text) {
 }
 
 async function sendMessage(content, attachments = []) {
+  if (mode === "image") {
+    await generateImage(content);
+    return;
+  }
+
   const conversation = activeConversation();
   const trimmed = content.trim();
   const fallbackText = attachments.length ? "请识别这些图片内容，并结合我的要求回答。" : "";
@@ -359,6 +386,108 @@ async function sendMessage(content, attachments = []) {
     setSending(false);
     render();
   }
+}
+
+async function generateImage(prompt) {
+  const conversation = activeConversation();
+  const text = prompt.trim();
+  if (!text) return;
+
+  conversation.messages.push({
+    id: randomId(),
+    role: "user",
+    content: text,
+  });
+  conversation.updatedAt = new Date().toISOString();
+  if (conversation.title === "新的对话") {
+    conversation.title = `生图：${text.slice(0, 22)}`;
+  }
+  saveState();
+  render();
+
+  if (!state.settings.apiKey) {
+    conversation.messages.push({
+      id: randomId(),
+      role: "assistant",
+      content: "请先在设置里填写 API Key。生图需要接口提供 /images/generations。",
+      error: true,
+    });
+    saveState();
+    render();
+    return;
+  }
+
+  const assistantMessage = {
+    id: randomId(),
+    role: "assistant",
+    content: "",
+    loading: true,
+  };
+  conversation.messages.push(assistantMessage);
+  render();
+  setSending(true);
+
+  try {
+    const size = els.imageSize.value || defaultSettings.imageSize;
+    state.settings.imageSize = size;
+    saveState();
+    const result = await requestImageGeneration(text, size);
+    assistantMessage.loading = false;
+    assistantMessage.content = `已生成图片：${text}`;
+    assistantMessage.imageResult = {
+      url: result.url,
+      prompt: text,
+      size,
+      filename: `ai-image-${Date.now()}.png`,
+    };
+  } catch (error) {
+    assistantMessage.content = `生图失败：${error.message}`;
+    assistantMessage.error = true;
+  } finally {
+    assistantMessage.loading = false;
+    conversation.updatedAt = new Date().toISOString();
+    saveState();
+    setSending(false);
+    render();
+  }
+}
+
+async function requestImageGeneration(prompt, size) {
+  if (window.__TAURI_INTERNALS__?.invoke) {
+    return window.__TAURI_INTERNALS__.invoke("image_generations", {
+      request: {
+        baseUrl: state.settings.baseUrl,
+        apiKey: state.settings.apiKey,
+        model: state.settings.model,
+        prompt,
+        size,
+      },
+    });
+  }
+
+  const response = await fetch(`${state.settings.baseUrl.replace(/\/$/, "")}/images/generations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${state.settings.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: state.settings.model,
+      prompt,
+      size,
+      n: 1,
+    }),
+  });
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(JSON.stringify(body));
+  }
+
+  const item = body.data?.[0];
+  if (item?.b64_json) return { url: `data:image/png;base64,${item.b64_json}` };
+  if (item?.url) return { url: item.url };
+  throw new Error("接口没有返回图片数据");
 }
 
 function createUserMessage(text, attachments) {
@@ -582,6 +711,17 @@ function setSending(isSending) {
     : '<svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z" /><path d="M22 2 11 13" /></svg>';
 }
 
+function updateModeUi() {
+  els.chatMode?.classList.toggle("active", mode === "chat");
+  els.imageMode?.classList.toggle("active", mode === "image");
+  els.imageSize.hidden = mode !== "image";
+  els.attach.hidden = mode !== "chat";
+  els.quickPrompts?.classList.toggle("hide", mode === "image");
+  els.input.placeholder = mode === "image"
+    ? "描述你想生成的图片，Enter 开始生图"
+    : "输入消息，Enter 发送，Shift + Enter 换行";
+}
+
 function autosizeInput() {
   els.input.style.height = "auto";
   els.input.style.height = `${Math.min(els.input.scrollHeight, 180)}px`;
@@ -704,6 +844,7 @@ els.settingsForm.addEventListener("submit", (event) => {
     model: els.model.value.trim() || defaultSettings.model,
     temperature: Number(els.temperature.value) || defaultSettings.temperature,
     systemPrompt: els.systemPrompt.value.trim() || defaultSettings.systemPrompt,
+    imageSize: els.imageSize.value || defaultSettings.imageSize,
   };
   saveState();
   els.settingsModal.close();
@@ -712,6 +853,25 @@ els.settingsForm.addEventListener("submit", (event) => {
 
 document.querySelectorAll("[data-prompt]").forEach((button) => {
   button.addEventListener("click", () => insertPrompt(button.dataset.prompt));
+});
+
+els.chatMode?.addEventListener("click", () => {
+  mode = "chat";
+  updateModeUi();
+  els.input.focus();
+});
+
+els.imageMode?.addEventListener("click", () => {
+  mode = "image";
+  pendingAttachments = [];
+  renderAttachmentTray();
+  updateModeUi();
+  els.input.focus();
+});
+
+els.imageSize?.addEventListener("change", () => {
+  state.settings.imageSize = els.imageSize.value;
+  saveState();
 });
 
 function clearLocalConversations() {
@@ -769,5 +929,46 @@ els.pasteKey?.addEventListener("click", async () => {
     els.apiKey.focus();
   }
 });
+
+els.messages.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-save-image]");
+  if (!button) return;
+  try {
+    await saveImageToChosenPath(button.dataset.saveImage, button.dataset.filename || `ai-image-${Date.now()}.png`);
+  } catch (error) {
+    alert(`保存失败：${error.message}`);
+  }
+});
+
+async function saveImageToChosenPath(url, filename) {
+  const blob = await imageUrlToBlob(url);
+  if (window.showSaveFilePicker) {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: filename,
+      types: [{ description: "PNG Image", accept: { "image/png": [".png"] } }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return;
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 3000);
+}
+
+async function imageUrlToBlob(url) {
+  if (url.startsWith("data:")) {
+    const response = await fetch(url);
+    return response.blob();
+  }
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.blob();
+}
 
 render();

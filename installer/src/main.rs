@@ -28,6 +28,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 const APP_EXE: &[u8] = include_bytes!("../../src-tauri/target/x86_64-pc-windows-msvc/release/ai_assistant_client.exe");
 const APP_NAME: &str = "AI Assistant Client";
 const APP_EXE_NAME: &str = "AI-Assistant-Client.exe";
+const APP_IDENTIFIER: &str = "com.dzc.aiassistant";
 const VERSION: &str = "1.0.6";
 const ID_INSTALL: isize = 1001;
 const ID_LAUNCH: isize = 1002;
@@ -57,7 +58,7 @@ fn main() {
         return;
     }
     if args.iter().any(|arg| arg == "--uninstall-clean") {
-        if !confirm("Clean uninstall AI Assistant Client?\n\nThis removes the app, shortcuts, and local data under %LOCALAPPDATA%\\AI-Assistant-Client.") {
+        if !confirm("Clean uninstall AI Assistant Client?\n\nThis removes the app, shortcuts, and all app data including WebView localStorage.") {
             return;
         }
         if let Err(error) = uninstall(true) {
@@ -126,10 +127,7 @@ fn uninstall(clean_data: bool) -> std::io::Result<()> {
     }
 
     if clean_data {
-        let data = data_dir();
-        if data.exists() {
-            fs::remove_dir_all(data)?;
-        }
+        remove_data_dirs()?;
     }
 
     Ok(())
@@ -250,7 +248,7 @@ fn run_setup_panel() -> windows::core::Result<()> {
             CW_USEDEFAULT,
             CW_USEDEFAULT,
         620,
-        400,
+        430,
             None,
             None,
             Some(instance),
@@ -301,14 +299,14 @@ unsafe fn create_setup_controls(hwnd: HWND, lparam: LPARAM) {
     create_label(hwnd, instance, 24, 54, 552, 22, &format!("Version {VERSION} · Windows GUI setup panel"));
     create_label(hwnd, instance, 24, 92, 552, 20, "Install path:");
     create_textbox(hwnd, instance, ID_INSTALL_PATH, 24, 116, 552, 28, &install_dir().display().to_string());
-    create_label(hwnd, instance, 24, 158, 552, 42, &format!("Data path:\r\n{}", data_dir().display()));
+    create_label(hwnd, instance, 24, 158, 552, 74, &format!("Data paths:\r\n{}", data_paths_text()));
 
-    create_button(hwnd, instance, ID_INSTALL, 24, 222, 116, 38, "Install / Repair");
-    create_button(hwnd, instance, ID_LAUNCH, 152, 222, 92, 38, "Launch");
-    create_button(hwnd, instance, ID_UNINSTALL, 256, 222, 96, 38, "Uninstall");
-    create_button(hwnd, instance, ID_CLEAN, 364, 222, 132, 38, "Clean Uninstall");
-    create_button(hwnd, instance, ID_CLOSE, 484, 312, 92, 34, "Close");
-    create_label(hwnd, instance, 24, 282, 552, 24, "");
+    create_button(hwnd, instance, ID_INSTALL, 24, 250, 116, 38, "Install / Repair");
+    create_button(hwnd, instance, ID_LAUNCH, 152, 250, 92, 38, "Launch");
+    create_button(hwnd, instance, ID_UNINSTALL, 256, 250, 96, 38, "Uninstall");
+    create_button(hwnd, instance, ID_CLEAN, 364, 250, 132, 38, "Clean Uninstall");
+    create_button(hwnd, instance, ID_CLOSE, 484, 342, 92, 34, "Close");
+    create_label(hwnd, instance, 24, 318, 448, 24, "");
 }
 
 unsafe fn create_label(hwnd: HWND, instance: HINSTANCE, x: i32, y: i32, width: i32, height: i32, text: &str) {
@@ -416,7 +414,7 @@ unsafe fn handle_setup_command(hwnd: HWND, id: isize) {
             }
         }
         ID_CLEAN => {
-            if confirm("Clean uninstall AI Assistant Client?\n\nThis removes the app and local data.") {
+            if confirm("Clean uninstall AI Assistant Client?\n\nThis removes the app and all app data, including WebView localStorage chat history.") {
                 match uninstall(true) {
                     Ok(()) => refresh_setup_status(hwnd, "Clean uninstall complete. App data removed."),
                     Err(error) => refresh_setup_status(hwnd, &format!("Clean uninstall failed: {error}")),
@@ -485,8 +483,33 @@ fn install_dir() -> PathBuf {
     local_app_data().join("Programs").join("AI-Assistant-Client")
 }
 
-fn data_dir() -> PathBuf {
-    local_app_data().join("AI-Assistant-Client")
+fn data_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![
+        local_app_data().join("AI-Assistant-Client"),
+        local_app_data().join(APP_IDENTIFIER),
+        roaming_app_data().join("AI-Assistant-Client"),
+        roaming_app_data().join(APP_IDENTIFIER),
+    ];
+    dirs.sort();
+    dirs.dedup();
+    dirs
+}
+
+fn data_paths_text() -> String {
+    data_dirs()
+        .into_iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join("\r\n")
+}
+
+fn remove_data_dirs() -> std::io::Result<()> {
+    for dir in data_dirs() {
+        if dir.exists() {
+            fs::remove_dir_all(&dir)?;
+        }
+    }
+    Ok(())
 }
 
 fn start_menu_dir() -> PathBuf {
@@ -511,6 +534,13 @@ fn local_app_data() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|_| env::var("USERPROFILE").map(|home| PathBuf::from(home).join("AppData").join("Local")))
         .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+fn roaming_app_data() -> PathBuf {
+    env::var("APPDATA")
+        .map(PathBuf::from)
+        .or_else(|_| env::var("USERPROFILE").map(|home| PathBuf::from(home).join("AppData").join("Roaming")))
+        .unwrap_or_else(|_| local_app_data())
 }
 
 fn wide(path: &Path) -> Vec<u16> {

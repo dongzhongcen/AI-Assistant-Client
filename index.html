@@ -63,12 +63,23 @@
 
         <section class="notice" id="notice">
           <strong>还没有配置模型</strong>
-          <span>点击右上角“设置”，填写 Base URL、API Key 和模型名。支持 OpenAI-compatible API，也支持可识图的 vision model。</span>
+          <span>点击右上角“设置”，填写 Base URL、API Key 和模型名。聊天使用 chat/completions，生图使用 images/generations。</span>
         </section>
 
         <section class="messages" id="messages" aria-live="polite"></section>
 
         <section class="composer">
+          <div class="mode-row">
+            <div class="mode-switch" role="group" aria-label="工作模式">
+              <button type="button" class="active" id="chatModeButton">聊天</button>
+              <button type="button" id="imageModeButton">生图</button>
+            </div>
+            <select id="imageSizeInput" class="image-size" aria-label="图片尺寸">
+              <option value="1024x1024">1024 x 1024</option>
+              <option value="1024x1536">1024 x 1536</option>
+              <option value="1536x1024">1536 x 1024</option>
+            </select>
+          </div>
           <div class="quick-prompts" id="quickPrompts">
             <button data-prompt="帮我把下面这段内容总结成三个要点：">总结</button>
             <button data-prompt="请用中文解释这段代码的作用，并指出潜在问题：">解释代码</button>
@@ -85,7 +96,7 @@
               <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z" /><path d="M22 2 11 13" /></svg>
             </button>
           </form>
-          <p class="composer-hint" id="composerHint">图片可多选上传；长文本会自动折叠为可打开的 TXT preview。</p>
+          <p class="composer-hint" id="composerHint">聊天支持多图识别；生图会调用接口的 /images/generations，生成后可选择保存位置。</p>
         </section>
       </main>
     </div>
