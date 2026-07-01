@@ -44,7 +44,7 @@ Local data:
 %LOCALAPPDATA%\AI-Assistant-Client
 ```
 
-The setup opens a Windows GUI panel with install, launch, uninstall, and clean uninstall actions. Shortcuts point directly to the app exe, not back to setup.
+The setup opens a Windows GUI panel with an editable install path plus install, launch, uninstall, and clean uninstall actions. Shortcuts point directly to the app exe, not back to setup.
 
 ## Model Setup
 

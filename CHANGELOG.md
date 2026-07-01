@@ -7,6 +7,7 @@
 - Added long-message TXT preview for very large pasted text.
 - Added per-message delete buttons for removing a single chat record.
 - Reworked the Windows setup into an interactive GUI panel with install, launch, uninstall, and clean uninstall actions.
+- Added an editable install path field to the Windows setup panel.
 - Removed CMD-based uninstall helper generation so shortcuts never point back to setup.
 
 ## 1.0.5 - 2026-07-01

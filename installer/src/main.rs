@@ -17,7 +17,7 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetDlgItem, GetMessageW,
-    LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SetWindowTextW,
+    GetWindowTextLengthW, GetWindowTextW, LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SetWindowTextW,
     ShowWindow, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT, HMENU, IDC_ARROW, MB_ICONERROR,
     IDYES, MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_YESNO, MSG, SW_SHOW, WINDOW_EX_STYLE,
     WM_COMMAND, WM_CREATE, WM_DESTROY, WNDCLASSW, WS_BORDER, WS_CAPTION,
@@ -34,6 +34,7 @@ const ID_LAUNCH: isize = 1002;
 const ID_UNINSTALL: isize = 1003;
 const ID_CLEAN: isize = 1004;
 const ID_CLOSE: isize = 1005;
+const ID_INSTALL_PATH: isize = 1006;
 const ID_STATUS: isize = 1010;
 
 fn main() {
@@ -91,8 +92,7 @@ fn print_help() {
     }
 }
 
-fn install() -> std::io::Result<()> {
-    let install_dir = install_dir();
+fn install_to(install_dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(&install_dir)?;
 
     let app_path = install_dir.join(APP_EXE_NAME);
@@ -120,7 +120,7 @@ fn uninstall(clean_data: bool) -> std::io::Result<()> {
     remove_shortcut(&desktop_dir().join("AI Assistant Client.cmd"));
     delete_uninstall_registry();
 
-    let install_dir = install_dir();
+    let install_dir = installed_dir().unwrap_or_else(install_dir);
     if install_dir.exists() {
         fs::remove_dir_all(&install_dir)?;
     }
@@ -194,6 +194,28 @@ fn write_uninstall_registry(install_dir: &Path, app_path: &Path) {
     }
 }
 
+fn installed_dir() -> Option<PathBuf> {
+    let output = Command::new("reg")
+        .args([
+            "query",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AI Assistant Client",
+            "/v",
+            "InstallLocation",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines()
+        .find(|line| line.contains("InstallLocation"))
+        .and_then(|line| line.split("REG_SZ").nth(1))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
 fn delete_uninstall_registry() {
     let _ = Command::new("reg")
         .args([
@@ -227,8 +249,8 @@ fn run_setup_panel() -> windows::core::Result<()> {
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            560,
-            380,
+        620,
+        400,
             None,
             None,
             Some(instance),
@@ -275,17 +297,18 @@ unsafe fn create_setup_controls(hwnd: HWND, lparam: LPARAM) {
         (*createstruct).hInstance
     };
 
-    create_label(hwnd, instance, 24, 20, 500, 28, "AI Assistant Client");
-    create_label(hwnd, instance, 24, 54, 500, 22, &format!("Version {VERSION} · Windows GUI setup panel"));
-    create_label(hwnd, instance, 24, 92, 500, 42, &format!("Install path:\r\n{}", install_dir().display()));
-    create_label(hwnd, instance, 24, 138, 500, 42, &format!("Data path:\r\n{}", data_dir().display()));
+    create_label(hwnd, instance, 24, 20, 552, 28, "AI Assistant Client");
+    create_label(hwnd, instance, 24, 54, 552, 22, &format!("Version {VERSION} · Windows GUI setup panel"));
+    create_label(hwnd, instance, 24, 92, 552, 20, "Install path:");
+    create_textbox(hwnd, instance, ID_INSTALL_PATH, 24, 116, 552, 28, &install_dir().display().to_string());
+    create_label(hwnd, instance, 24, 158, 552, 42, &format!("Data path:\r\n{}", data_dir().display()));
 
-    create_button(hwnd, instance, ID_INSTALL, 24, 204, 116, 38, "Install / Repair");
-    create_button(hwnd, instance, ID_LAUNCH, 152, 204, 92, 38, "Launch");
-    create_button(hwnd, instance, ID_UNINSTALL, 256, 204, 96, 38, "Uninstall");
-    create_button(hwnd, instance, ID_CLEAN, 364, 204, 132, 38, "Clean Uninstall");
-    create_button(hwnd, instance, ID_CLOSE, 404, 292, 92, 34, "Close");
-    create_label(hwnd, instance, 24, 260, 472, 24, "");
+    create_button(hwnd, instance, ID_INSTALL, 24, 222, 116, 38, "Install / Repair");
+    create_button(hwnd, instance, ID_LAUNCH, 152, 222, 92, 38, "Launch");
+    create_button(hwnd, instance, ID_UNINSTALL, 256, 222, 96, 38, "Uninstall");
+    create_button(hwnd, instance, ID_CLEAN, 364, 222, 132, 38, "Clean Uninstall");
+    create_button(hwnd, instance, ID_CLOSE, 484, 312, 92, 34, "Close");
+    create_label(hwnd, instance, 24, 282, 552, 24, "");
 }
 
 unsafe fn create_label(hwnd: HWND, instance: HINSTANCE, x: i32, y: i32, width: i32, height: i32, text: &str) {
@@ -336,14 +359,45 @@ unsafe fn create_button(
     );
 }
 
+unsafe fn create_textbox(
+    hwnd: HWND,
+    instance: HINSTANCE,
+    id: isize,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    text: &str,
+) {
+    let class = wide_text("EDIT");
+    let value = wide_text(text);
+    let _ = CreateWindowExW(
+        WINDOW_EX_STYLE(0),
+        PCWSTR(class.as_ptr()),
+        PCWSTR(value.as_ptr()),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER,
+        x,
+        y,
+        width,
+        height,
+        Some(hwnd),
+        Some(HMENU(id as *mut c_void)),
+        Some(instance),
+        None,
+    );
+}
+
 unsafe fn handle_setup_command(hwnd: HWND, id: isize) {
     match id {
-        ID_INSTALL => match install() {
-            Ok(()) => refresh_setup_status(hwnd, "Installed. Shortcuts point to the app, not setup."),
-            Err(error) => refresh_setup_status(hwnd, &format!("Install failed: {error}")),
-        },
+        ID_INSTALL => {
+            let install_dir = selected_install_dir(hwnd);
+            match validate_install_dir(&install_dir).and_then(|_| install_to(&install_dir)) {
+                Ok(()) => refresh_setup_status(hwnd, &format!("Installed to {}", install_dir.display())),
+                Err(error) => refresh_setup_status(hwnd, &format!("Install failed: {error}")),
+            }
+        }
         ID_LAUNCH => {
-            let app = install_dir().join(APP_EXE_NAME);
+            let app = selected_install_dir(hwnd).join(APP_EXE_NAME);
             if app.exists() {
                 match Command::new(app).spawn() {
                     Ok(_) => refresh_setup_status(hwnd, "Launched AI Assistant Client."),
@@ -374,6 +428,32 @@ unsafe fn handle_setup_command(hwnd: HWND, id: isize) {
         }
         _ => {}
     }
+}
+
+unsafe fn selected_install_dir(hwnd: HWND) -> PathBuf {
+    read_textbox(hwnd, ID_INSTALL_PATH).map_or_else(install_dir, PathBuf::from)
+}
+
+unsafe fn read_textbox(hwnd: HWND, id: isize) -> Option<String> {
+    let control = GetDlgItem(Some(hwnd), id as i32).ok()?;
+    let len = GetWindowTextLengthW(control);
+    let mut buffer = vec![0u16; len as usize + 1];
+    let copied = GetWindowTextW(control, &mut buffer);
+    if copied == 0 {
+        return None;
+    }
+    let value = String::from_utf16_lossy(&buffer[..copied as usize]).trim().to_string();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn validate_install_dir(path: &Path) -> std::io::Result<()> {
+    if path.as_os_str().is_empty() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Install path is empty"));
+    }
+    if path.file_name().is_none() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Install path is invalid"));
+    }
+    Ok(())
 }
 
 unsafe fn refresh_setup_status(hwnd: HWND, text: &str) {
