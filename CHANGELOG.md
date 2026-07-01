@@ -4,6 +4,8 @@
 
 - Fixed desktop chat requests by routing model calls through Tauri native Rust commands.
 - Avoided WebView CORS failures that caused `Failed to fetch` after filling API settings.
+- Fixed the local installer to embed the correct Tauri release executable.
+- Hid the installer console window for release builds.
 
 ## 1.0.4 - 2026-07-01
 

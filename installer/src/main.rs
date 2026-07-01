@@ -1,10 +1,12 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const APP_EXE: &[u8] = include_bytes!("../../src-tauri/target/release/ai_assistant_client.exe");
+const APP_EXE: &[u8] = include_bytes!("../../src-tauri/target/x86_64-pc-windows-msvc/release/ai_assistant_client.exe");
 const APP_NAME: &str = "AI Assistant Client";
 const APP_EXE_NAME: &str = "AI-Assistant-Client.exe";
 const VERSION: &str = "1.0.5";

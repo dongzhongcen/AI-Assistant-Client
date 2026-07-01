@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OutDir = Join-Path $Root "dist\installer"
-$TauriExe = Join-Path $Root "src-tauri\target\release\ai_assistant_client.exe"
+$TauriExe = Join-Path $Root "src-tauri\target\x86_64-pc-windows-msvc\release\ai_assistant_client.exe"
 $SetupSource = Join-Path $Root "installer\target\x86_64-pc-windows-msvc\release\AI-Assistant-Client-Setup.exe"
 $SetupDest = Join-Path $OutDir "AI-Assistant-Client-Setup.exe"
 
