@@ -12,11 +12,14 @@ use windows::Win32::System::Com::{
     COINIT_APARTMENTTHREADED, IPersistFile,
 };
 use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+use windows::Win32::UI::WindowsAndMessaging::{
+    MessageBoxW, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_YESNO,
+};
 
 const APP_EXE: &[u8] = include_bytes!("../../src-tauri/target/x86_64-pc-windows-msvc/release/ai_assistant_client.exe");
 const APP_NAME: &str = "AI Assistant Client";
 const APP_EXE_NAME: &str = "AI-Assistant-Client.exe";
-const VERSION: &str = "1.0.5";
+const VERSION: &str = "1.0.6";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -25,25 +28,55 @@ fn main() {
         return;
     }
     if args.iter().any(|arg| arg == "--uninstall") {
+        if !confirm("Uninstall AI Assistant Client?\n\nThis removes the app and shortcuts. Local chat data is kept.") {
+            return;
+        }
         if let Err(error) = uninstall(false) {
+            show_error(&format!("Uninstall failed:\n{error}"));
             log_error(&format!("Uninstall failed: {error}"));
             std::process::exit(1);
         }
+        show_info("AI Assistant Client has been uninstalled.");
         log_info(&format!("{APP_NAME} uninstalled."));
         return;
     }
     if args.iter().any(|arg| arg == "--uninstall-clean") {
+        if !confirm("Clean uninstall AI Assistant Client?\n\nThis removes the app, shortcuts, and local data under %LOCALAPPDATA%\\AI-Assistant-Client.") {
+            return;
+        }
         if let Err(error) = uninstall(true) {
+            show_error(&format!("Clean uninstall failed:\n{error}"));
             log_error(&format!("Clean uninstall failed: {error}"));
             std::process::exit(1);
         }
+        show_info("AI Assistant Client and local data have been removed.");
         log_info(&format!("{APP_NAME} uninstalled and data cleaned."));
         return;
     }
 
+    let install_dir = install_dir();
+    let prompt = if install_dir.join(APP_EXE_NAME).exists() {
+        format!(
+            "AI Assistant Client is already installed.\n\nUpdate or repair the installation at:\n{}",
+            install_dir.display()
+        )
+    } else {
+        format!(
+            "Install AI Assistant Client for the current Windows user?\n\nInstall path:\n{}",
+            install_dir.display()
+        )
+    };
+    if !confirm(&prompt) {
+        return;
+    }
+
     if let Err(error) = install() {
+        show_error(&format!("Install failed:\n{error}"));
         log_error(&format!("Install failed: {error}"));
         std::process::exit(1);
+    }
+    if confirm("Installation complete.\n\nLaunch AI Assistant Client now?") {
+        let _ = Command::new(install_dir.join(APP_EXE_NAME)).spawn();
     }
     log_info(&format!("{APP_NAME} installed."));
 }
@@ -69,15 +102,6 @@ fn install() -> std::io::Result<()> {
 
     let app_path = install_dir.join(APP_EXE_NAME);
     write_file(&app_path, APP_EXE)?;
-
-    let uninstall_cmd = install_dir.join("Uninstall-AI-Assistant-Client.cmd");
-    write_text(
-        &uninstall_cmd,
-        &format!(
-            "@echo off\r\n\"{}\" --uninstall-clean\r\npause\r\n",
-            env::current_exe()?.display()
-        ),
-    )?;
 
     create_shortcut(
         &start_menu_dir().join(format!("{APP_NAME}.lnk")),
@@ -119,12 +143,6 @@ fn uninstall(clean_data: bool) -> std::io::Result<()> {
 fn write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut file = fs::File::create(path)?;
     file.write_all(bytes)?;
-    Ok(())
-}
-
-fn write_text(path: &Path, text: &str) -> std::io::Result<()> {
-    let mut file = fs::File::create(path)?;
-    file.write_all(text.as_bytes())?;
     Ok(())
 }
 
@@ -191,6 +209,24 @@ fn delete_uninstall_registry() {
         .status();
 }
 
+fn confirm(message: &str) -> bool {
+    message_box(message, MB_YESNO | MB_ICONQUESTION) == IDYES.0
+}
+
+fn show_info(message: &str) {
+    let _ = message_box(message, MB_OK | MB_ICONINFORMATION);
+}
+
+fn show_error(message: &str) {
+    let _ = message_box(message, MB_OK | MB_ICONERROR);
+}
+
+fn message_box(message: &str, style: windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE) -> i32 {
+    let title = wide_text(&format!("{APP_NAME} Setup"));
+    let body = wide_text(message);
+    unsafe { MessageBoxW(None, PCWSTR(body.as_ptr()), PCWSTR(title.as_ptr()), style).0 }
+}
+
 fn install_dir() -> PathBuf {
     local_app_data().join("Programs").join("AI-Assistant-Client")
 }
@@ -225,6 +261,10 @@ fn local_app_data() -> PathBuf {
 
 fn wide(path: &Path) -> Vec<u16> {
     path.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
+}
+
+fn wide_text(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 fn log_info(_message: &str) {

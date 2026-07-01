@@ -1,4 +1,5 @@
 const STORAGE_KEY = "ai-assistant-client-v1";
+const LONG_TEXT_THRESHOLD = 12000;
 
 const defaultSettings = {
   baseUrl: "https://api.openai.com/v1",
@@ -36,6 +37,9 @@ const els = {
   send: document.querySelector("#sendButton"),
   notice: document.querySelector("#notice"),
   hint: document.querySelector("#composerHint"),
+  imageInput: document.querySelector("#imageInput"),
+  attach: document.querySelector("#attachButton"),
+  attachmentTray: document.querySelector("#attachmentTray"),
   newChat: document.querySelector("#newChatButton"),
   search: document.querySelector("#conversationSearch"),
   settingsButton: document.querySelector("#settingsButton"),
@@ -59,6 +63,7 @@ let state = loadState();
 let abortController = null;
 let pendingAssistantContent = "";
 let pendingFrame = 0;
+let pendingAttachments = [];
 
 function loadState() {
   try {
@@ -82,7 +87,18 @@ function loadState() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(createPersistableState(state)));
+  } catch {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      settings: state.settings,
+      conversations: state.conversations.map((conversation) => ({
+        ...conversation,
+        messages: conversation.messages.map(sanitizeMessageForStorage),
+      })),
+      activeId: state.activeId,
+    }));
+  }
 }
 
 function createConversation() {
@@ -105,6 +121,7 @@ function render() {
   renderConversationList();
   renderMessages();
   renderPromptList();
+  renderAttachmentTray();
   els.notice.classList.toggle("show", !state.settings.apiKey);
 }
 
@@ -145,8 +162,8 @@ function renderMessages() {
     els.messages.innerHTML = `
       <div class="empty-state">
         <article>
-          <h2>开始一个清爽的 AI 会话</h2>
-          <p>这个客户端支持本地保存会话、提示词快捷插入、OpenAI 兼容接口和流式输出。先配置模型，然后直接提问。</p>
+          <h2>开始一个清爽的 AI 对话</h2>
+          <p>支持本地保存、多图识别、长文本 TXT preview、OpenAI-compatible API 和 Windows 独立安装。</p>
         </article>
       </div>
     `;
@@ -163,11 +180,70 @@ function createMessageNode(message) {
   const node = document.createElement("article");
   node.className = `message ${message.role}${message.error ? " error" : ""}`;
   const avatar = message.role === "user" ? "你" : "AI";
-  node.innerHTML = `
-    <div class="avatar">${avatar}</div>
-    <div class="bubble">${message.loading ? '<span class="typing"><span></span><span></span><span></span></span>' : renderMarkdownLite(message.content)}</div>
-  `;
+  const avatarNode = document.createElement("div");
+  avatarNode.className = "avatar";
+  avatarNode.textContent = avatar;
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  if (message.loading) {
+    bubble.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+  } else {
+    bubble.innerHTML = renderMessageBody(message);
+  }
+
+  node.append(avatarNode, bubble);
   return node;
+}
+
+function renderMessageBody(message) {
+  const parts = [];
+  if (message.longTextPreview) {
+    parts.push(renderTextPreview(message.longTextPreview, getDisplayText(message.content)));
+  } else {
+    parts.push(renderMarkdownLite(getDisplayText(message.content)));
+  }
+
+  if (Array.isArray(message.attachments) && message.attachments.length) {
+    parts.push(renderImageGrid(message.attachments));
+  }
+
+  return parts.filter(Boolean).join("");
+}
+
+function renderTextPreview(preview, text = "") {
+  const href = preview.url || `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`;
+  return `
+    <div class="txt-preview">
+      <div>
+        <strong>${escapeHtml(preview.name)}</strong>
+        <span>${formatBytes(preview.size)} · TXT preview</span>
+      </div>
+      <a href="${href}" target="_blank" rel="noreferrer">打开</a>
+    </div>
+  `;
+}
+
+function renderImageGrid(attachments) {
+  const images = attachments
+    .filter((item) => item.dataUrl)
+    .map((item) => `
+      <figure class="image-chip">
+        <img src="${item.dataUrl}" alt="${escapeHtml(item.name)}" loading="lazy" />
+        <figcaption>${escapeHtml(item.name)}</figcaption>
+      </figure>
+    `)
+    .join("");
+  if (!images) return "";
+  return `<div class="image-grid">${images}</div>`;
+}
+
+function getDisplayText(content) {
+  if (Array.isArray(content)) {
+    const textPart = content.find((part) => part?.type === "text");
+    return textPart?.text || "";
+  }
+  return content || "";
 }
 
 function renderPromptList() {
@@ -183,18 +259,44 @@ function renderPromptList() {
   });
 }
 
+function renderAttachmentTray() {
+  els.attachmentTray.innerHTML = "";
+  els.attachmentTray.hidden = pendingAttachments.length === 0;
+  pendingAttachments.forEach((attachment) => {
+    const item = document.createElement("div");
+    item.className = "pending-image";
+    item.innerHTML = `
+      <img src="${attachment.dataUrl}" alt="${escapeHtml(attachment.name)}" />
+      <span>${escapeHtml(attachment.name)}</span>
+      <button type="button" aria-label="移除图片">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+    `;
+    item.querySelector("button").addEventListener("click", () => {
+      pendingAttachments = pendingAttachments.filter((entry) => entry.id !== attachment.id);
+      renderAttachmentTray();
+    });
+    els.attachmentTray.appendChild(item);
+  });
+}
+
 function insertPrompt(text) {
   els.input.value = `${text}${els.input.value ? "\n\n" + els.input.value : ""}`;
   autosizeInput();
   els.input.focus();
 }
 
-async function sendMessage(content) {
+async function sendMessage(content, attachments = []) {
   const conversation = activeConversation();
-  conversation.messages.push({ role: "user", content });
+  const trimmed = content.trim();
+  const fallbackText = attachments.length ? "请识别这些图片内容，并结合我的要求回答。" : "";
+  const text = trimmed || fallbackText;
+  const userMessage = createUserMessage(text, attachments);
+
+  conversation.messages.push(userMessage);
   conversation.updatedAt = new Date().toISOString();
   if (conversation.title === "新的对话") {
-    conversation.title = content.slice(0, 28);
+    conversation.title = createTitle(text, attachments);
   }
   saveState();
   render();
@@ -231,6 +333,39 @@ async function sendMessage(content) {
   }
 }
 
+function createUserMessage(text, attachments) {
+  const imageParts = attachments.map((attachment) => ({
+    type: "image_url",
+    image_url: { url: attachment.dataUrl },
+  }));
+  const hasImages = imageParts.length > 0;
+  const longTextPreview = text.length > LONG_TEXT_THRESHOLD ? createLongTextPreview(text) : null;
+  const content = hasImages
+    ? [{ type: "text", text }, ...imageParts]
+    : text;
+
+  return {
+    role: "user",
+    content,
+    attachments,
+    longTextPreview,
+  };
+}
+
+function createLongTextPreview(text) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  return {
+    name: `long-message-${Date.now()}.txt`,
+    size: blob.size,
+    url: `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`,
+  };
+}
+
+function createTitle(text, attachments) {
+  if (text) return text.slice(0, 28);
+  return attachments.length ? `图片识别 (${attachments.length})` : "新的对话";
+}
+
 async function streamCompletion(conversation, assistantMessage, signal) {
   if (window.AndroidBridge?.chatCompletions) {
     await streamCompletionOnAndroid(conversation, assistantMessage);
@@ -246,12 +381,7 @@ async function streamCompletion(conversation, assistantMessage, signal) {
   const url = useLocalProxy
     ? "/api/chat/completions"
     : `${state.settings.baseUrl.replace(/\/$/, "")}/chat/completions`;
-  const messages = [
-    { role: "system", content: state.settings.systemPrompt || defaultSettings.systemPrompt },
-    ...conversation.messages
-      .filter((message) => !message.loading && !message.error)
-      .map(({ role, content }) => ({ role, content })),
-  ];
+  const messages = buildApiMessages(conversation);
 
   const response = await fetch(url, {
     method: "POST",
@@ -306,13 +436,6 @@ async function streamCompletion(conversation, assistantMessage, signal) {
 }
 
 async function streamCompletionOnTauri(conversation, assistantMessage) {
-  const messages = [
-    { role: "system", content: state.settings.systemPrompt || defaultSettings.systemPrompt },
-    ...conversation.messages
-      .filter((message) => !message.loading && !message.error)
-      .map(({ role, content }) => ({ role, content })),
-  ];
-
   assistantMessage.loading = false;
   const response = await window.__TAURI_INTERNALS__.invoke("chat_completions", {
     request: {
@@ -320,7 +443,7 @@ async function streamCompletionOnTauri(conversation, assistantMessage) {
       apiKey: state.settings.apiKey,
       model: state.settings.model,
       temperature: Number(state.settings.temperature) || 0.7,
-      messages,
+      messages: buildApiMessages(conversation),
     },
   });
   assistantMessage.content = response.content;
@@ -330,12 +453,6 @@ async function streamCompletionOnTauri(conversation, assistantMessage) {
 function streamCompletionOnAndroid(conversation, assistantMessage) {
   return new Promise((resolve, reject) => {
     const requestId = randomId();
-    const messages = [
-      { role: "system", content: state.settings.systemPrompt || defaultSettings.systemPrompt },
-      ...conversation.messages
-        .filter((message) => !message.loading && !message.error)
-        .map(({ role, content }) => ({ role, content })),
-    ];
 
     window.__androidChatCallbacks ||= {};
     window.__androidChatCallbacks[requestId] = {
@@ -360,9 +477,59 @@ function streamCompletionOnAndroid(conversation, assistantMessage) {
       apiKey: state.settings.apiKey,
       model: state.settings.model,
       temperature: Number(state.settings.temperature) || 0.7,
-      messages,
+      messages: buildApiMessages(conversation),
     }));
   });
+}
+
+function buildApiMessages(conversation) {
+  return [
+    { role: "system", content: state.settings.systemPrompt || defaultSettings.systemPrompt },
+    ...conversation.messages
+      .filter((message) => !message.loading && !message.error)
+      .map(({ role, content }) => ({ role, content: stripMissingImageParts(content) })),
+  ];
+}
+
+function createPersistableState(source) {
+  return {
+    settings: source.settings,
+    conversations: source.conversations.map((conversation) => ({
+      ...conversation,
+      messages: conversation.messages.map(sanitizeMessageForStorage),
+    })),
+    activeId: source.activeId,
+  };
+}
+
+function sanitizeMessageForStorage(message) {
+  return {
+    ...message,
+    content: stripImageData(message.content),
+    longTextPreview: message.longTextPreview
+      ? {
+          name: message.longTextPreview.name,
+          size: message.longTextPreview.size,
+        }
+      : message.longTextPreview,
+    attachments: Array.isArray(message.attachments)
+      ? message.attachments.map(({ id, name, type, size }) => ({ id, name, type, size }))
+      : message.attachments,
+  };
+}
+
+function stripImageData(content) {
+  if (!Array.isArray(content)) return content;
+  return content.map((part) => {
+    if (part?.type !== "image_url") return part;
+    return { type: "text", text: "[图片已用于本次识别，未写入本地存储以避免残留。]" };
+  });
+}
+
+function stripMissingImageParts(content) {
+  if (!Array.isArray(content)) return content;
+  const filtered = content.filter((part) => part?.type !== "image_url" || part.image_url?.url);
+  return filtered.length ? filtered : "";
 }
 
 function updateLastAssistantBubble(content) {
@@ -391,6 +558,30 @@ function autosizeInput() {
   els.input.style.height = `${Math.min(els.input.scrollHeight, 180)}px`;
 }
 
+async function readImages(files) {
+  const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+  for (const file of images) {
+    const dataUrl = await readAsDataUrl(file);
+    pendingAttachments.push({
+      id: randomId(),
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl,
+    });
+  }
+  renderAttachmentTray();
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function renderMarkdownLite(text) {
   return escapeHtml(text)
     .replace(/```([\s\S]*?)```/g, "<pre><code>$1</code></pre>")
@@ -417,6 +608,12 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
+function formatBytes(value) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function randomId() {
   if (crypto?.randomUUID) return crypto.randomUUID();
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -429,10 +626,22 @@ els.form.addEventListener("submit", (event) => {
     return;
   }
   const content = els.input.value.trim();
-  if (!content) return;
+  const attachments = pendingAttachments;
+  if (!content && !attachments.length) return;
+  pendingAttachments = [];
   els.input.value = "";
   autosizeInput();
-  sendMessage(content);
+  renderAttachmentTray();
+  sendMessage(content, attachments);
+});
+
+els.attach.addEventListener("click", () => els.imageInput.click());
+els.imageInput.addEventListener("change", async () => {
+  try {
+    await readImages(els.imageInput.files);
+  } finally {
+    els.imageInput.value = "";
+  }
 });
 
 els.input.addEventListener("input", autosizeInput);
@@ -511,7 +720,7 @@ els.export.addEventListener("click", () => {
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
 });
 
 els.pasteKey?.addEventListener("click", async () => {

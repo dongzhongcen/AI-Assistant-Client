@@ -1,37 +1,60 @@
 # AI Assistant Client
 
-轻量、干净、可打包的 AI 助手客户端。  
-Lightweight AI chat client, ready for Android packaging.  
-Client IA leger, simple et portable.
+轻量、干净、可安装的 AI 助手客户端。  
+OpenAI-compatible desktop chat client with local-first data.  
+Client IA simple, local, installable sous Windows.
 
 ## Version
 
-- App: `1.0.2`
+- App: `1.0.6`
+- Windows installer: `dist/installer/AI-Assistant-Client-Setup.exe`
 - Android package: `com.dzc.aiassistant`
-- Build type: debug APK
 - Updated: `2026-07-01`
 
-## What It Does
+## Highlights
 
-- 中文：多会话、本地保存、提示词库、流式回复。
-- English: OpenAI-compatible chat client with local storage.
-- Francais: interface simple, donnees locales, APK Android possible.
+- 中文：独立 Windows 窗口、多会话、本地保存、导出/清空、图片识别、长文本 TXT preview。
+- English: installable Tauri desktop app, OpenAI-compatible API, vision messages, clean uninstall path.
+- Francais: interface simple, donnees locales, installation et suppression faciles.
 
-## Run On Desktop
+## Windows Install
 
-```bash
-node server.js
+Build the desktop app and setup program:
+
+```powershell
+npm run build
+powershell -ExecutionPolicy Bypass -File .\build-windows-installer.ps1
 ```
 
-Open:
+Installer output:
 
 ```text
-http://localhost:4173
+D:\AI-Client_dongzhongcen\dist\installer\AI-Assistant-Client-Setup.exe
 ```
 
-## Android APK
+Installed app:
 
-Build:
+```text
+%LOCALAPPDATA%\Programs\AI-Assistant-Client\AI-Assistant-Client.exe
+```
+
+Local data:
+
+```text
+%LOCALAPPDATA%\AI-Assistant-Client
+```
+
+The setup uses a Windows GUI confirmation flow. Shortcuts point directly to the app exe, not back to setup.
+
+## Model Setup
+
+Open `设置 / Settings / Reglages` and fill:
+
+- `Base URL`: for example `https://api.openai.com/v1`
+- `API Key`: your provider key
+- `Model`: use a vision-capable model for image recognition
+
+## Android
 
 ```powershell
 .\build-android-apk.ps1
@@ -43,84 +66,8 @@ Output:
 AI-Assistant-Client-debug.apk
 ```
 
-The Android app uses a local WebView shell and a native bridge for streaming chat requests.  
-No extra Gradle download is required; the script uses the local Android SDK tools.
-
-## Windows Desktop EXE
-
-Inspired by Chatbox's desktop-first structure, this project keeps a small host process and a web chat renderer, while making data cleanup explicit.
-
-For a true installable desktop app, use the Tauri build:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build-tauri-desktop.ps1
-```
-
-Installer outputs are generated under:
-
-```text
-src-tauri/target/release/bundle
-```
-
-If the Tauri NSIS/MSI bundler cannot download its packaging tools, build the local installer:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build-windows-installer.ps1
-```
-
-Output:
-
-```text
-dist/installer/AI-Assistant-Client-Setup.exe
-```
-
-The installer creates a Start Menu shortcut, a desktop shortcut, and an uninstall entry for the current Windows user.
-
-Build:
-
-```powershell
-.\build-desktop-exe.ps1
-```
-
-Output:
-
-```text
-dist/windows/AI-Assistant-Client.exe
-dist/windows/Clean-AI-Assistant-Client-Data.cmd
-```
-
-Desktop data is kept in one easy-to-clean folder:
-
-```text
-%LOCALAPPDATA%\AI-Assistant-Client
-```
-
-Clean it:
-
-```powershell
-dist/windows/AI-Assistant-Client.exe --clear-data
-```
-
-or run:
-
-```text
-dist/windows/Clean-AI-Assistant-Client-Data.cmd
-```
-
-## Model Setup
-
-In the app, open `设置 / Settings / Reglages` and fill:
-
-- `Base URL`: OpenAI-compatible endpoint, for example `https://api.openai.com/v1`
-- `API Key`: your provider key
-- `Model`: for example `gpt-4.1-mini`
-
 ## Notes
 
-- 会话和设置默认保存在本地浏览器/WebView 存储里。
-- Cache is kept minimal; temporary WebView cache is cleared on app exit.
-- Les donnees importantes restent locales, les fichiers temporaires sont limites.
-
-## Latest Fix
-
-`1.0.2` fixes Android export, clear confirmation, API-key paste, edge-to-edge display, and smoother motion.
+- 图片用于当次识别，不永久写入本地历史，减少残留。
+- Very long messages are collapsed into an openable `.txt` preview in the chat.
+- Des donnees importantes restent locales; le nettoyage reste previsible.

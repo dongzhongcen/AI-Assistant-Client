@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.6 - 2026-07-01
+
+- Added multi-image upload for vision-capable OpenAI-compatible models.
+- Added image thumbnails in chat while avoiding permanent image data in local storage.
+- Added long-message TXT preview for very large pasted text.
+- Reworked the Windows setup into an interactive GUI confirmation flow.
+- Removed CMD-based uninstall helper generation so shortcuts never point back to setup.
+
 ## 1.0.5 - 2026-07-01
 
 - Fixed desktop chat requests by routing model calls through Tauri native Rust commands.
