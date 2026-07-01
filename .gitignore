@@ -1,4 +1,5 @@
 build/
+app/src/main/assets/
 *.apk
 *.apk.idsig
 *.keystore
