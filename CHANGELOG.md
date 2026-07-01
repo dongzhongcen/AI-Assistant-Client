@@ -6,6 +6,8 @@
 - Avoided WebView CORS failures that caused `Failed to fetch` after filling API settings.
 - Fixed the local installer to embed the correct Tauri release executable.
 - Hid the installer console window for release builds.
+- Replaced PowerShell shortcut creation with native Windows COM shortcuts to stop flashing setup helper windows.
+- Installer shortcuts now point directly to the app executable and never rerun setup.
 
 ## 1.0.4 - 2026-07-01
 

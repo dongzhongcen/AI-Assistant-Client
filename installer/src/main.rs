@@ -3,8 +3,15 @@
 use std::env;
 use std::fs;
 use std::io::Write;
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use windows::core::{Interface, PCWSTR};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+    COINIT_APARTMENTTHREADED, IPersistFile,
+};
+use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
 const APP_EXE: &[u8] = include_bytes!("../../src-tauri/target/x86_64-pc-windows-msvc/release/ai_assistant_client.exe");
 const APP_NAME: &str = "AI Assistant Client";
@@ -19,34 +26,41 @@ fn main() {
     }
     if args.iter().any(|arg| arg == "--uninstall") {
         if let Err(error) = uninstall(false) {
-            eprintln!("Uninstall failed: {error}");
+            log_error(&format!("Uninstall failed: {error}"));
             std::process::exit(1);
         }
-        println!("{APP_NAME} uninstalled.");
+        log_info(&format!("{APP_NAME} uninstalled."));
         return;
     }
     if args.iter().any(|arg| arg == "--uninstall-clean") {
         if let Err(error) = uninstall(true) {
-            eprintln!("Clean uninstall failed: {error}");
+            log_error(&format!("Clean uninstall failed: {error}"));
             std::process::exit(1);
         }
-        println!("{APP_NAME} uninstalled and data cleaned.");
+        log_info(&format!("{APP_NAME} uninstalled and data cleaned."));
         return;
     }
 
     if let Err(error) = install() {
-        eprintln!("Install failed: {error}");
+        log_error(&format!("Install failed: {error}"));
         std::process::exit(1);
     }
-    println!("{APP_NAME} installed.");
+    log_info(&format!("{APP_NAME} installed."));
 }
 
 fn print_help() {
+    #[cfg(not(debug_assertions))]
+    {
+        return;
+    }
+    #[cfg(debug_assertions)]
+    {
     println!("{APP_NAME} Setup {VERSION}");
     println!("Usage:");
     println!("  AI-Assistant-Client-Setup.exe              Install for current user");
     println!("  AI-Assistant-Client-Setup.exe --uninstall  Remove app files and shortcuts");
     println!("  AI-Assistant-Client-Setup.exe --uninstall-clean  Remove app and local data");
+    }
 }
 
 fn install() -> std::io::Result<()> {
@@ -83,6 +97,8 @@ fn install() -> std::io::Result<()> {
 fn uninstall(clean_data: bool) -> std::io::Result<()> {
     remove_shortcut(&start_menu_dir().join(format!("{APP_NAME}.lnk")));
     remove_shortcut(&desktop_dir().join(format!("{APP_NAME}.lnk")));
+    remove_shortcut(&start_menu_dir().join("AI Assistant Client.cmd"));
+    remove_shortcut(&desktop_dir().join("AI Assistant Client.cmd"));
     delete_uninstall_registry();
 
     let install_dir = install_dir();
@@ -116,16 +132,26 @@ fn create_shortcut(shortcut: &Path, target: &Path, workdir: &Path) {
     if let Some(parent) = shortcut.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let script = format!(
-        "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}');$s.TargetPath='{}';$s.WorkingDirectory='{}';$s.IconLocation='{},0';$s.Save()",
-        ps_escape(&shortcut.display().to_string()),
-        ps_escape(&target.display().to_string()),
-        ps_escape(&workdir.display().to_string()),
-        ps_escape(&target.display().to_string()),
-    );
-    let _ = Command::new("powershell")
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &script])
-        .status();
+    let shortcut_w = wide(shortcut);
+    let target_w = wide(target);
+    let workdir_w = wide(workdir);
+
+    unsafe {
+        if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
+            return;
+        }
+        let result = (|| -> windows::core::Result<()> {
+            let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
+            link.SetPath(PCWSTR(target_w.as_ptr()))?;
+            link.SetWorkingDirectory(PCWSTR(workdir_w.as_ptr()))?;
+            link.SetIconLocation(PCWSTR(target_w.as_ptr()), 0)?;
+            let file: IPersistFile = link.cast()?;
+            file.Save(PCWSTR(shortcut_w.as_ptr()), true)?;
+            Ok(())
+        })();
+        let _ = result;
+        CoUninitialize();
+    }
 }
 
 fn remove_shortcut(shortcut: &Path) {
@@ -197,6 +223,16 @@ fn local_app_data() -> PathBuf {
         .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
-fn ps_escape(value: &str) -> String {
-    value.replace('\'', "''")
+fn wide(path: &Path) -> Vec<u16> {
+    path.as_os_str().encode_wide().chain(std::iter::once(0)).collect()
+}
+
+fn log_info(_message: &str) {
+    #[cfg(debug_assertions)]
+    println!("{_message}");
+}
+
+fn log_error(_message: &str) {
+    #[cfg(debug_assertions)]
+    eprintln!("{_message}");
 }
